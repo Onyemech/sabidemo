@@ -97,9 +97,12 @@ type LogoProps = {
 const SabiOpsLogo: React.FC<LogoProps> = ({ size = 28 }) => {
   return (
     <div className="logo-root" style={{ height: size }}>
-      <div className="logo-mark">
-        <span className="logo-initial">S</span>
-      </div>
+      <img 
+        src="/image.png" 
+        alt="SabiOps" 
+        className="sabiops-logo" 
+        style={{ width: size, height: size, objectFit: 'cover', borderRadius: '4px' }} 
+      />
       <span className="logo-text">SabiOps</span>
     </div>
   );
@@ -133,7 +136,7 @@ const App: React.FC = () => {
     setIsProcessing(true);
     const handler = window.PaystackPop.setup({
       key: paystackPublicKey,
-      email: "caleb@example.com",
+      email: "caleb@gmail.com",
       amount: numericAmount * 100,
       currency: "NGN",
       ref: `REV-${Date.now()}`,
