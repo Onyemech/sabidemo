@@ -19,7 +19,8 @@ if (rootElement) {
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    // Add a version query to force update
+    navigator.serviceWorker.register("/sw.js?v=2").catch(() => undefined);
   });
 }
 
