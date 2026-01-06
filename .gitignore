@@ -1,0 +1,34 @@
+# Node / pnpm / npm
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build output
+dist
+.vercel
+
+# Local env / secrets
+.env
+.env.local
+.env.*.local
+
+# Editor / OS junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+
+# Logs
+logs
+*.log
+*.log.*
+
+# TypeScript
+*.tsbuildinfo
+
+# Vite cache
+vite.config.timestamp-*.mjs
+
