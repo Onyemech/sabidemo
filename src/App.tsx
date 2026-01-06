@@ -2,73 +2,53 @@ import React, { useMemo, useState, useEffect } from "react";
 import { Routes, Route, NavLink, useNavigate } from "react-router-dom";
 import Chart from "react-apexcharts";
 
+// --- Global Types ---
+declare global {
+  interface Window {
+    PaystackPop: any;
+  }
+}
+
 // --- Types ---
 type Transaction = {
   id: string;
   amount: number;
   timestamp: string;
-};
-
-type LinePoint = {
-  x: string;
-  y: number;
+  type: "deposit" | "withdrawal";
+  status: "success" | "pending" | "failed";
+  label: string;
 };
 
 // --- Helpers ---
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    maximumFractionDigits: 0
-  }).format(value);
-};
-
-const loadInitialBalance = () => {
-  const stored = localStorage.getItem("balance");
-  return stored ? Number(stored) : 0;
-};
+const MOCK_HISTORY: Transaction[] = [
+  { id: "TX1", amount: 450000, timestamp: "2023-08-01T10:00:00Z", type: "deposit", status: "success", label: "Initial Deposit" },
+  { id: "TX2", amount: -15000, timestamp: "2023-08-02T14:30:00Z", type: "withdrawal", status: "success", label: "Domain Renewal" },
+  { id: "TX3", amount: 120000, timestamp: "2023-08-05T09:15:00Z", type: "deposit", status: "success", label: "Sales Revenue" },
+  { id: "TX4", amount: -25000, timestamp: "2023-08-10T11:20:00Z", type: "withdrawal", status: "success", label: "Hosting Fee" },
+  { id: "TX5", amount: 750000, timestamp: "2023-08-15T16:45:00Z", type: "deposit", status: "success", label: "Product Launch" },
+];
 
 const loadInitialTransactions = (): Transaction[] => {
   const stored = localStorage.getItem("transactions");
-  if (!stored) return [];
+  if (!stored) return MOCK_HISTORY;
   try {
     const parsed = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed : MOCK_HISTORY;
   } catch {
-    return [];
+    return MOCK_HISTORY;
   }
 };
 
-const saveBalance = (value: number) => localStorage.setItem("balance", String(value));
-const saveTransactions = (items: Transaction[]) => localStorage.setItem("transactions", JSON.stringify(items));
+const saveTransactions = (txs: Transaction[]) => {
+  localStorage.setItem("transactions", JSON.stringify(txs));
+};
 
-const generateTrendData = (transactions: Transaction[]): LinePoint[] => {
-  const daysBack = 7;
-  const today = new Date();
-  const dayMap = new Map<string, number>();
-  for (let i = daysBack - 1; i >= 0; i -= 1) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - i);
-    const key = date.toISOString().slice(0, 10);
-    dayMap.set(key, 0);
-  }
-  transactions.forEach(tx => {
-    const date = new Date(tx.timestamp);
-    const key = date.toISOString().slice(0, 10);
-    if (dayMap.has(key)) {
-      dayMap.set(key, (dayMap.get(key) || 0) + tx.amount);
-    }
-  });
-  let cumulative = 0;
-  const result: LinePoint[] = [];
-  Array.from(dayMap.entries())
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-    .forEach(([key, value]) => {
-      cumulative += value;
-      const label = new Date(key).toLocaleDateString("en-NG", { month: "short", day: "numeric" });
-      result.push({ x: label, y: cumulative });
-    });
-  return result;
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    minimumFractionDigits: 0,
+  }).format(amount);
 };
 
 // --- Components ---
@@ -98,13 +78,14 @@ const InstallBanner: React.FC = () => {
   }, []);
 
   const handleInstall = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === "accepted") {
-      setIsVisible(false);
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === "accepted") {
+        setIsVisible(false);
+      }
+      setDeferredPrompt(null);
     }
-    setDeferredPrompt(null);
   };
 
   if (!isVisible) return null;
@@ -113,7 +94,7 @@ const InstallBanner: React.FC = () => {
     <div className="install-banner">
       <div className="install-content">
         <h3>Install SabiOps</h3>
-        <p>Access your dashboard faster</p>
+        <p>Access your dashboard faster from your home screen.</p>
       </div>
       <button className="install-button" onClick={handleInstall}>
         Install
@@ -124,12 +105,14 @@ const InstallBanner: React.FC = () => {
 
 const App: React.FC = () => {
   const navigate = useNavigate();
-  const [balance, setBalance] = useState<number>(() => loadInitialBalance());
   const [transactions, setTransactions] = useState<Transaction[]>(() => loadInitialTransactions());
   const [amountInput, setAmountInput] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const trendData = useMemo(() => generateTrendData(transactions), [transactions]);
+  const balance = useMemo(() => {
+    return transactions.reduce((acc, tx) => acc + tx.amount, 0);
+  }, [transactions]);
+
   const paystackPublicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
 
   const handleSubmitDeposit = () => {
@@ -145,16 +128,21 @@ const App: React.FC = () => {
       amount: numericAmount * 100,
       currency: "NGN",
       callback: (res: any) => {
-        const newBalance = balance + numericAmount;
-        const newTx = { id: res.reference, amount: numericAmount, timestamp: new Date().toISOString() };
+        const newTx: Transaction = { 
+          id: res.reference, 
+          amount: numericAmount, 
+          timestamp: new Date().toISOString(),
+          type: "deposit",
+          status: "success",
+          label: "Wallet Funding"
+        };
         const updatedTxs = [newTx, ...transactions];
-        setBalance(newBalance);
         setTransactions(updatedTxs);
-        saveBalance(newBalance);
         saveTransactions(updatedTxs);
         setAmountInput("");
         setIsProcessing(false);
-        navigate("/history");
+        // Navigate back to dashboard instead of history
+        navigate("/");
       },
       onClose: () => setIsProcessing(false)
     });
@@ -179,7 +167,12 @@ const App: React.FC = () => {
           <SabiOpsLogo />
           <p className="greeting-label">Welcome back, Caleb 👋</p>
         </div>
-        <img src="/image.png" alt="Profile" className="profile-image" />
+        <div className="header-actions">
+          <button className="notification-bell">
+            <span>🔔</span>
+            <div className="bell-badge" />
+          </button>
+        </div>
       </header>
 
       <main className="app-main">
@@ -192,11 +185,11 @@ const App: React.FC = () => {
 
                 <section className="card balance-card">
                   <div className="balance-label-row">
-                    <span className="balance-label">Total Revenue</span>
+                    <span className="balance-label">Current Balance</span>
                     <span className="balance-currency">NGN</span>
                   </div>
-                  <p className="balance-amount">{formatCurrency(balance + 1250000)}</p>
-                  <div className="stat-trend up" style={{ color: "#bbf7d0" }}>↑ 15% from last week</div>
+                  <p className="balance-amount">{formatCurrency(balance)}</p>
+                  <div className="stat-trend up" style={{ color: "#bbf7d0" }}>↑ Safe to spend</div>
                 </section>
 
                 <div className="stats-row">
@@ -271,23 +264,29 @@ const App: React.FC = () => {
             element={
               <div className="page">
                 <section className="card">
-                  <h2 className="section-title">Transactions</h2>
-                  {transactions.length === 0 ? (
-                    <p className="empty-state">No history yet.</p>
-                  ) : (
-                    <div className="history-list">
-                      {transactions.map(tx => (
-                        <div key={tx.id} className="product-item">
-                          <div className="product-img">💰</div>
-                          <div className="product-info">
-                            <p className="product-name">Deposit</p>
-                            <p className="product-meta">{new Date(tx.timestamp).toLocaleDateString()}</p>
-                          </div>
-                          <p className="product-price">{formatCurrency(tx.amount)}</p>
+                  <div className="section-header">
+                    <h2 className="section-title">Transaction History</h2>
+                    <span className="balance-currency">Total: {formatCurrency(balance)}</span>
+                  </div>
+                  <div className="history-list">
+                    {transactions.map(tx => (
+                      <div key={tx.id} className="product-item">
+                        <div className={`product-img ${tx.type}`} style={{ 
+                          background: tx.type === 'deposit' ? '#f0fdf4' : '#fff1f2',
+                          fontSize: '1.1rem'
+                        }}>
+                          {tx.type === 'deposit' ? '📈' : '📉'}
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        <div className="product-info">
+                          <p className="product-name">{tx.label}</p>
+                          <p className="product-meta">{new Date(tx.timestamp).toLocaleDateString()} • {tx.status}</p>
+                        </div>
+                        <p className="product-price" style={{ color: tx.type === 'deposit' ? '#10b981' : '#ef4444' }}>
+                          {tx.type === 'deposit' ? '+' : ''}{formatCurrency(tx.amount)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </section>
               </div>
             }
