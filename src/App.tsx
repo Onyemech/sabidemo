@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Routes, Route, NavLink, useNavigate } from "react-router-dom";
 import Chart from "react-apexcharts";
 
+// --- Types ---
 type Transaction = {
   id: string;
   amount: number;
@@ -13,6 +14,7 @@ type LinePoint = {
   y: number;
 };
 
+// --- Helpers ---
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat("en-NG", {
     style: "currency",
@@ -23,39 +25,22 @@ const formatCurrency = (value: number) => {
 
 const loadInitialBalance = () => {
   const stored = localStorage.getItem("balance");
-  if (!stored) {
-    return 0;
-  }
-  const parsed = Number(stored);
-  if (Number.isNaN(parsed)) {
-    return 0;
-  }
-  return parsed;
+  return stored ? Number(stored) : 0;
 };
 
 const loadInitialTransactions = (): Transaction[] => {
   const stored = localStorage.getItem("transactions");
-  if (!stored) {
-    return [];
-  }
+  if (!stored) return [];
   try {
-    const parsed = JSON.parse(stored) as Transaction[];
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed;
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 };
 
-const saveBalance = (value: number) => {
-  localStorage.setItem("balance", String(value));
-};
-
-const saveTransactions = (items: Transaction[]) => {
-  localStorage.setItem("transactions", JSON.stringify(items));
-};
+const saveBalance = (value: number) => localStorage.setItem("balance", String(value));
+const saveTransactions = (items: Transaction[]) => localStorage.setItem("transactions", JSON.stringify(items));
 
 const generateTrendData = (transactions: Transaction[]): LinePoint[] => {
   const daysBack = 7;
@@ -71,8 +56,7 @@ const generateTrendData = (transactions: Transaction[]): LinePoint[] => {
     const date = new Date(tx.timestamp);
     const key = date.toISOString().slice(0, 10);
     if (dayMap.has(key)) {
-      const current = dayMap.get(key) ?? 0;
-      dayMap.set(key, current + tx.amount);
+      dayMap.set(key, (dayMap.get(key) || 0) + tx.amount);
     }
   });
   let cumulative = 0;
@@ -81,29 +65,59 @@ const generateTrendData = (transactions: Transaction[]): LinePoint[] => {
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .forEach(([key, value]) => {
       cumulative += value;
-      const label = new Date(key).toLocaleDateString("en-NG", {
-        month: "short",
-        day: "numeric"
-      });
+      const label = new Date(key).toLocaleDateString("en-NG", { month: "short", day: "numeric" });
       result.push({ x: label, y: cumulative });
     });
   return result;
 };
 
-type LogoProps = {
-  size?: number;
+// --- Components ---
+const SabiOpsLogo: React.FC<{ size?: number }> = ({ size = 32 }) => {
+  return (
+    <div className="logo-root">
+      <div className="logo-mark" style={{ width: size, height: size }}>
+        <img src="/image.png" alt="SabiOps" className="sabiops-logo" />
+      </div>
+      <span className="logo-text">SabiOps</span>
+    </div>
+  );
 };
 
-const SabiOpsLogo: React.FC<LogoProps> = ({ size = 28 }) => {
+const InstallBanner: React.FC = () => {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsVisible(true);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === "accepted") {
+      setIsVisible(false);
+    }
+    setDeferredPrompt(null);
+  };
+
+  if (!isVisible) return null;
+
   return (
-    <div className="logo-root" style={{ height: size }}>
-      <img 
-        src="/image.png" 
-        alt="SabiOps" 
-        className="sabiops-logo" 
-        style={{ width: size, height: size, objectFit: 'cover', borderRadius: '4px' }} 
-      />
-      <span className="logo-text">SabiOps</span>
+    <div className="install-banner">
+      <div className="install-content">
+        <h3>Install SabiOps</h3>
+        <p>Access your dashboard faster</p>
+      </div>
+      <button className="install-button" onClick={handleInstall}>
+        Install
+      </button>
     </div>
   );
 };
@@ -116,261 +130,139 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
 
   const trendData = useMemo(() => generateTrendData(transactions), [transactions]);
-
-  const paystackPublicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY as string | undefined;
+  const paystackPublicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
 
   const handleSubmitDeposit = () => {
     const numericAmount = Number(amountInput);
-    if (!numericAmount || numericAmount <= 0) {
-      alert("Enter a valid deposit amount.");
-      return;
-    }
-    if (!paystackPublicKey) {
-      alert("Paystack public key is not configured. Add VITE_PAYSTACK_PUBLIC_KEY to your .env and restart the app.");
-      return;
-    }
-    if (!window.PaystackPop) {
-      alert("Unable to load Paystack at the moment. Check your connection.");
-      return;
-    }
+    if (!numericAmount || numericAmount <= 0) return alert("Enter a valid amount.");
+    if (!paystackPublicKey) return alert("Paystack key missing.");
+    if (!window.PaystackPop) return alert("Paystack not loaded.");
+
     setIsProcessing(true);
     const handler = window.PaystackPop.setup({
       key: paystackPublicKey,
       email: "caleb@gmail.com",
       amount: numericAmount * 100,
       currency: "NGN",
-      ref: `REV-${Date.now()}`,
-      metadata: {
-        source: "SabiOps"
-      },
-      callback: response => {
+      callback: (res: any) => {
         const newBalance = balance + numericAmount;
-        const newTransaction: Transaction = {
-          id: response.reference,
-          amount: numericAmount,
-          timestamp: new Date().toISOString()
-        };
-        const updatedTransactions = [newTransaction, ...transactions];
+        const newTx = { id: res.reference, amount: numericAmount, timestamp: new Date().toISOString() };
+        const updatedTxs = [newTx, ...transactions];
         setBalance(newBalance);
-        setTransactions(updatedTransactions);
+        setTransactions(updatedTxs);
         saveBalance(newBalance);
-        saveTransactions(updatedTransactions);
+        saveTransactions(updatedTxs);
         setAmountInput("");
         setIsProcessing(false);
         navigate("/history");
       },
-      onClose: () => {
-        setIsProcessing(false);
-      }
+      onClose: () => setIsProcessing(false)
     });
     handler.openIframe();
   };
 
-  const trendOptions: any = useMemo(
-    () => ({
-      chart: {
-        id: "revenue-trend",
-        toolbar: {
-          show: false
-        },
-        zoom: {
-          enabled: false
-        }
-      },
-      dataLabels: {
-        enabled: false
-      },
-      fill: {
-        type: "gradient",
-        gradient: {
-          shadeIntensity: 0.9,
-          opacityFrom: 0.4,
-          opacityTo: 0,
-          stops: [0, 40, 100]
-        }
-      },
-      stroke: {
-        curve: "smooth",
-        width: 3
-      },
-      xaxis: {
-        type: "category",
-        labels: {
-          style: {
-            colors: "#9ca3af"
-          }
-        }
-      },
-      yaxis: {
-        labels: {
-          formatter: (value: number) => formatCurrency(value),
-          style: {
-            colors: "#9ca3af"
-          }
-        }
-      },
-      grid: {
-        borderColor: "rgba(255,255,255,0.05)"
-      },
-      tooltip: {
-        y: {
-          formatter: (value: number) => formatCurrency(value)
-        }
-      },
-      colors: ["#6366f1"]
-    }),
-    [] as const
-  );
-
-  const candleOptions: any = useMemo(
-    () => ({
-      chart: {
-        id: "revenue-candles",
-        toolbar: {
-          show: false
-        }
-      },
-      xaxis: {
-        type: "category",
-        labels: {
-          style: {
-            colors: "#9ca3af"
-          }
-        }
-      },
-      yaxis: {
-        labels: {
-          formatter: (value: number) => formatCurrency(value),
-          style: {
-            colors: "#9ca3af"
-          }
-        }
-      },
-      grid: {
-        borderColor: "rgba(255,255,255,0.05)"
-      },
-      tooltip: {
-        y: {
-          formatter: (value: number) => formatCurrency(value)
-        }
-      }
-    }),
-    [] as const
-  );
-
-  const trendSeries: any = useMemo(
-    () => [
-      {
-        name: "Revenue",
-        data: trendData
-      }
-    ],
-    [trendData]
-  );
+  const chartOptions: any = {
+    chart: { toolbar: { show: false }, zoom: { enabled: false }, sparkline: { enabled: false } },
+    stroke: { curve: "smooth", width: 3 },
+    fill: { type: "gradient", gradient: { opacityFrom: 0.6, opacityTo: 0.1 } },
+    xaxis: { labels: { style: { colors: "#9ca3af" } } },
+    yaxis: { labels: { show: false } },
+    grid: { show: false },
+    colors: ["#6366f1"],
+    tooltip: { theme: "light" }
+  };
 
   return (
     <div className="app-root">
       <header className="app-header">
         <div className="header-left">
           <SabiOpsLogo />
-          <p className="greeting-label">Hello Caleb</p>
+          <p className="greeting-label">Welcome back, Caleb 👋</p>
         </div>
-        <div className="header-right">
-          <span className="header-period">Aug 2023</span>
-          <img src="/image.png" alt="Profile" className="profile-image" />
-        </div>
+        <img src="/image.png" alt="Profile" className="profile-image" />
       </header>
+
       <main className="app-main">
         <Routes>
           <Route
             path="/"
             element={
               <div className="page">
+                <InstallBanner />
+
                 <section className="card balance-card">
                   <div className="balance-label-row">
-                    <span className="balance-label">Funds available</span>
+                    <span className="balance-label">Total Revenue</span>
                     <span className="balance-currency">NGN</span>
                   </div>
-                  <p className="balance-amount">{formatCurrency(balance)}</p>
-                  <p className="balance-caption">Overview of your small business cash for campaigns.</p>
-                  <div className="balance-pills">
-                    <div className="pill">
-                      <span className="pill-label">Budgeted</span>
-                      <span className="pill-value">{formatCurrency(balance + 350000)}</span>
+                  <p className="balance-amount">{formatCurrency(balance + 1250000)}</p>
+                  <div className="stat-trend up" style={{ color: "#bbf7d0" }}>↑ 15% from last week</div>
+                </section>
+
+                <div className="stats-row">
+                  <div className="stat-card">
+                    <div className="stat-icon" style={{ background: "#eef2ff", color: "#6366f1" }}>👥</div>
+                    <p className="stat-label">Total Customers</p>
+                    <p className="stat-value">32,502</p>
+                    <p className="stat-trend down">↓ 2.1%</p>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-icon" style={{ background: "#fff7ed", color: "#f97316" }}>🛒</div>
+                    <p className="stat-label">Total Orders</p>
+                    <p className="stat-value">40,284</p>
+                    <p className="stat-trend up">↑ 8.2%</p>
+                  </div>
+                </div>
+
+                <section className="card charts-card">
+                  <div className="section-header">
+                    <h2 className="section-title">Sales Overview</h2>
+                    <span className="view-all">Monthly ▾</span>
+                  </div>
+                  <Chart options={chartOptions} series={[{ name: "Sales", data: [30, 40, 35, 50, 49, 60, 70, 91] }]} type="area" height={180} />
+                </section>
+
+                <section className="card">
+                  <div className="section-header">
+                    <h2 className="section-title">Frequently Ordered</h2>
+                    <span className="view-all">View All</span>
+                  </div>
+                  <div className="product-item">
+                    <div className="product-img" style={{ background: "#ffe4e6" }}>🍞</div>
+                    <div className="product-info">
+                      <p className="product-name">Baked Bread</p>
+                      <p className="product-meta">50 Orders this week</p>
                     </div>
-                    <div className="pill">
-                      <span className="pill-label">Spent</span>
-                      <span className="pill-value accent-negative">{formatCurrency(140000)}</span>
+                    <p className="product-price">₦2,500</p>
+                  </div>
+                  <div className="product-item">
+                    <div className="product-img" style={{ background: "#f0fdf4" }}>🍚</div>
+                    <div className="product-info">
+                      <p className="product-name">Fried Rice</p>
+                      <p className="product-meta">42 Orders this week</p>
                     </div>
-                    <div className="pill">
-                      <span className="pill-label">Left</span>
-                      <span className="pill-value accent-positive">
-                        {formatCurrency(balance + 210000)}
-                      </span>
-                    </div>
+                    <p className="product-price">₦3,800</p>
                   </div>
                 </section>
-                <section className="card overview-card">
-                  <div className="overview-grid">
-                    <div className="overview-tile">
-                      <p className="overview-label">This month revenue</p>
-                      <p className="overview-value">{formatCurrency(balance + 520000)}</p>
-                      <p className="overview-tag positive">+18% vs last month</p>
-                    </div>
-                    <div className="overview-tile">
-                      <p className="overview-label">Ad spend</p>
-                      <p className="overview-value">{formatCurrency(185000)}</p>
-                      <p className="overview-tag neutral">Across all channels</p>
-                    </div>
-                    <div className="overview-tile">
-                      <p className="overview-label">Net balance</p>
-                      <p className="overview-value">{formatCurrency(balance + 335000)}</p>
-                      <p className="overview-tag">Available to reinvest</p>
-                    </div>
-                  </div>
-                </section>
+
                 <section className="card deposit-card">
-                  <h2 className="section-title">Fund campaigns</h2>
-                  <label className="field-label" htmlFor="amount">
-                    Amount
-                  </label>
+                  <h2 className="section-title">Fund Campaigns</h2>
                   <div className="amount-row">
                     <span className="amount-prefix">₦</span>
                     <input
-                      id="amount"
                       type="number"
-                      inputMode="numeric"
-                      min={0}
                       placeholder="0.00"
                       className="amount-input"
                       value={amountInput}
-                      onChange={event => setAmountInput(event.target.value)}
+                      onChange={e => setAmountInput(e.target.value)}
                     />
                   </div>
-                  <button
-                    type="button"
-                    className="primary-button"
-                    onClick={handleSubmitDeposit}
-                    disabled={isProcessing}
-                  >
-                    {isProcessing ? "Processing with Paystack..." : "Deposit with Paystack"}
+                  <button className="primary-button" onClick={handleSubmitDeposit} disabled={isProcessing}>
+                    {isProcessing ? "Processing..." : "Add Funds"}
                   </button>
-                  <p className="helper-text">Balance updates immediately after a successful payment.</p>
                 </section>
-                <section className="card charts-card">
-                  <div className="charts-header">
-                    <h2 className="section-title">Revenue trend</h2>
-                    <span className="chip">Live</span>
-                  </div>
-                  <div className="chart-wrapper">
-                    <Chart
-                      options={trendOptions}
-                      series={trendSeries}
-                      type="area"
-                      height={220}
-                    />
-                  </div>
-                </section>
+
+                <div style={{ height: 20 }}></div>
               </div>
             }
           />
@@ -378,36 +270,23 @@ const App: React.FC = () => {
             path="/history"
             element={
               <div className="page">
-                <section className="card history-card">
-                  <h2 className="section-title">Deposit history</h2>
+                <section className="card">
+                  <h2 className="section-title">Transactions</h2>
                   {transactions.length === 0 ? (
-                    <p className="empty-state">No deposits yet. Fund your first campaign.</p>
+                    <p className="empty-state">No history yet.</p>
                   ) : (
-                    <ul className="history-list">
-                      {transactions.map(tx => {
-                        const date = new Date(tx.timestamp);
-                        return (
-                          <li key={tx.id} className="history-item">
-                            <div>
-                              <p className="history-amount">{formatCurrency(tx.amount)}</p>
-                              <p className="history-date">
-                                {date.toLocaleDateString("en-NG", {
-                                  year: "numeric",
-                                  month: "short",
-                                  day: "numeric"
-                                })}{" "}
-                                •{" "}
-                                {date.toLocaleTimeString("en-NG", {
-                                  hour: "2-digit",
-                                  minute: "2-digit"
-                                })}
-                              </p>
-                            </div>
-                            <span className="history-status">Successful</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                    <div className="history-list">
+                      {transactions.map(tx => (
+                        <div key={tx.id} className="product-item">
+                          <div className="product-img">💰</div>
+                          <div className="product-info">
+                            <p className="product-name">Deposit</p>
+                            <p className="product-meta">{new Date(tx.timestamp).toLocaleDateString()}</p>
+                          </div>
+                          <p className="product-price">{formatCurrency(tx.amount)}</p>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </section>
               </div>
@@ -415,34 +294,25 @@ const App: React.FC = () => {
           />
         </Routes>
       </main>
+
       <nav className="bottom-nav">
-        <NavLink to="/" end className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
-          <span className="nav-dot" />
-          <span className="nav-label">Dashboard</span>
+        <NavLink to="/" className="nav-link">
+          <span style={{ fontSize: "1.2rem" }}>🏠</span>
+          <span className="nav-label">Home</span>
         </NavLink>
-        <button
-          type="button"
-          className="nav-fab"
-          onClick={() => {
-            if (window.deferredPwaPrompt) {
-              try {
-                window.deferredPwaPrompt.prompt();
-              } catch {
-              }
-            } else {
-              navigate("/");
-            }
-          }}
-        >
-          +
-        </button>
-        <NavLink
-          to="/history"
-          className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
-        >
-          <span className="nav-dot" />
-          <span className="nav-label">History</span>
+        <NavLink to="/history" className="nav-link">
+          <span style={{ fontSize: "1.2rem" }}>📊</span>
+          <span className="nav-label">Reports</span>
         </NavLink>
+        <button className="nav-fab" onClick={() => navigate("/")}>+</button>
+        <div className="nav-link">
+          <span style={{ fontSize: "1.2rem" }}>🎯</span>
+          <span className="nav-label">Ads</span>
+        </div>
+        <div className="nav-link">
+          <span style={{ fontSize: "1.2rem" }}>⚙️</span>
+          <span className="nav-label">Settings</span>
+        </div>
       </nav>
     </div>
   );

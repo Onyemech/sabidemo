@@ -68,17 +68,156 @@ body {
 }
 
 .logo-mark {
-  width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  background: radial-gradient(circle at top left, #7c3aed, #ec4899);
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: #6366f1;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow:
-    0 6px 12px rgba(129, 140, 248, 0.7),
-    0 0 0 2px rgba(248, 250, 252, 0.95);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  overflow: hidden;
 }
+
+.sabiops-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Install Banner Styles */
+.install-banner {
+  background: linear-gradient(135deg, #6366f1, #7c3aed);
+  border-radius: 16px;
+  padding: 16px;
+  color: white;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 10px 20px rgba(99, 102, 241, 0.2);
+}
+
+.install-content h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.install-content p {
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+.install-button {
+  background: white;
+  color: #6366f1;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* New Section Styles */
+.stats-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.stat-card {
+  background: white;
+  border-radius: 20px;
+  padding: 16px;
+  border: 1px solid #f0f0f0;
+}
+
+.stat-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  font-size: 1.2rem;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.stat-trend {
+  font-size: 0.7rem;
+  margin-top: 4px;
+}
+
+.stat-trend.up { color: #10b981; }
+.stat-trend.down { color: #ef4444; }
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.view-all {
+  font-size: 0.8rem;
+  color: #6366f1;
+  font-weight: 600;
+}
+
+.product-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f9fafb;
+}
+
+.product-item:last-child {
+  border-bottom: none;
+}
+
+.product-img {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: #f3f4f6;
+}
+
+.product-info {
+  flex: 1;
+}
+
+.product-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.product-meta {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.product-price {
+  font-weight: 600;
+  color: #111827;
+}
+
 
 .logo-initial {
   font-size: 1rem;
